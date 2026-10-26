@@ -25,7 +25,13 @@ export async function ingestAccount(db: Db, account: Account, report: SyncReport
     if (!connector) continue;
     try {
       const startedAt = new Date();
-      const raw = await connector.fetchComments(conn, conn.lastSyncedAt);
+      // Until a page has any stored comments, keep looking back over its full history,
+      // so a first check that found nothing (or failed part way) never skips old comments.
+      const [{ stored }] = await db
+        .select({ stored: sql<number>`count(*)::int` })
+        .from(comments)
+        .where(eq(comments.connectionId, conn.id));
+      const raw = await connector.fetchComments(conn, stored > 0 ? conn.lastSyncedAt : null);
       report.fetched += raw.length;
       const own = { externalId: conn.externalId, handle: conn.handle, extraAuthorIds: account.extraOwnAuthorIds };
       for (const r of raw) {

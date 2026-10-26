@@ -1,6 +1,6 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, count, eq } from "drizzle-orm";
 import { Frame } from "@/components/Frame";
-import { connections, invites, memberships, topics } from "@/db/schema";
+import { comments, connections, invites, memberships, topics } from "@/db/schema";
 import { requireContext } from "@/lib/auth/context";
 import { PLATFORM_LABELS } from "@/lib/dashboard";
 import { metaConfigured } from "@/lib/meta-oauth";
@@ -17,6 +17,8 @@ import {
 } from "./actions";
 
 export const dynamic = "force-dynamic";
+// A first check can fetch and score hundreds of comments.
+export const maxDuration = 300;
 
 const CONNECT_MESSAGES: Record<string, string> = {
   not_configured: "Facebook and Instagram can't be connected until META_APP_ID and META_APP_SECRET are set.",
@@ -33,23 +35,40 @@ function connectMessage(status: string | undefined) {
   return CONNECT_MESSAGES[status] ?? null;
 }
 
+function checkMessage(p: Record<string, string | undefined>) {
+  if (!p.checked) return null;
+  const n = (k: string) => Number(p[k]) || 0;
+  return `Checked: found ${n("fetched")} comment${n("fetched") === 1 ? "" : "s"}, ${n("added")} new, ${n("scored")} scored.`;
+}
+
 export default async function Settings({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const notice = connectMessage((await searchParams).connect);
+  const params = await searchParams;
+  const notice = connectMessage(params.connect);
+  const checked = checkMessage(params);
+  const problem = params.checked ? params.problem?.slice(0, 300) : undefined;
   const ctx = await requireContext();
   const { db } = ctx;
   const account = ctx.current.account;
   const owner = ctx.current.role === "owner";
-  const [topicRows, conns, members, pending] = await Promise.all([
+  const [topicRows, conns, members, pending, stored] = await Promise.all([
     db.select().from(topics).where(eq(topics.accountId, account.id)).orderBy(asc(topics.sortOrder)),
     db.select().from(connections).where(eq(connections.accountId, account.id)),
     db.select().from(memberships).where(eq(memberships.accountId, account.id)).orderBy(asc(memberships.email)),
     db.select().from(invites).where(eq(invites.accountId, account.id)).orderBy(asc(invites.email)),
+    db
+      .select({ connectionId: comments.connectionId, n: count() })
+      .from(comments)
+      .where(eq(comments.accountId, account.id))
+      .groupBy(comments.connectionId),
   ]);
+  const storedBy = new Map(stored.map((r) => [r.connectionId, r.n]));
 
   return (
     <Frame ctx={ctx} active="settings" filters={null}>
       {!owner && <div className="notice">Only owners can change these settings.</div>}
       {notice && <div className="notice">{notice}</div>}
+      {checked && <div className="notice">{checked}</div>}
+      {problem && <div className="notice">Something went wrong: {problem}</div>}
 
       <section className="card">
         <h2>Business</h2>
@@ -78,7 +97,8 @@ export default async function Settings({ searchParams }: { searchParams: Promise
                   {c.isDemo && <span className="chip">Sample data</span>}
                 </td>
                 <td className="muted">
-                  {c.lastSyncedAt ? `Last checked ${c.lastSyncedAt.toLocaleString("en-US")}` : "Not checked yet"}
+                  {storedBy.get(c.id) ?? 0} comments ·{" "}
+                  {c.lastSyncedAt ? `last checked ${c.lastSyncedAt.toLocaleString("en-US")}` : "not checked yet"}
                 </td>
                 <td>
                   {owner && (
