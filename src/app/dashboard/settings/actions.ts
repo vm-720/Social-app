@@ -2,7 +2,7 @@
 
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { accounts, invites, memberships, topics } from "@/db/schema";
+import { accounts, connections, invites, memberships, topics } from "@/db/schema";
 import { requireContext, requireOwner } from "@/lib/auth/context";
 import { syncAccount } from "@/lib/sync";
 
@@ -99,4 +99,13 @@ export async function checkNow() {
   const { db, current } = await requireContext();
   await syncAccount(db, current.account);
   revalidatePath("/dashboard", "layout");
+}
+
+/** Removes the connection, its stored token and (by cascade) its comments. */
+export async function disconnect(f: FormData) {
+  const { db, current } = await requireOwner();
+  await db
+    .delete(connections)
+    .where(and(eq(connections.id, text(f, "id", 64)), eq(connections.accountId, current.account.id)));
+  done();
 }
