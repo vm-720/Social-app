@@ -104,22 +104,25 @@ export async function analyzeAccount(db: Db, account: Account, report: SyncRepor
   }
 }
 
-/** One full run: fetch, filter, store, score. Called hourly by the cron route or `npm run sync`. */
-export async function runSync(db: Db, opts: { analyze?: boolean } = {}): Promise<SyncReport[]> {
+/** Fetch, filter, store and score for one account. */
+export async function syncAccount(db: Db, account: Account, opts: { analyze?: boolean } = {}): Promise<SyncReport> {
   const analyze = opts.analyze ?? Boolean(process.env.ANTHROPIC_API_KEY);
+  const report: SyncReport = { account: account.slug, fetched: 0, inserted: 0, owned: 0, analyzed: 0, errors: [] };
+  await ingestAccount(db, account, report);
+  if (analyze) {
+    try {
+      await analyzeAccount(db, account, report);
+    } catch (err) {
+      report.errors.push(`analysis: ${(err as Error).message}`);
+    }
+  }
+  return report;
+}
+
+/** One full run over every account. Called by the cron route or `npm run sync`. */
+export async function runSync(db: Db, opts: { analyze?: boolean } = {}): Promise<SyncReport[]> {
   const all = await db.select().from(accounts);
   const reports: SyncReport[] = [];
-  for (const account of all) {
-    const report: SyncReport = { account: account.slug, fetched: 0, inserted: 0, owned: 0, analyzed: 0, errors: [] };
-    await ingestAccount(db, account, report);
-    if (analyze) {
-      try {
-        await analyzeAccount(db, account, report);
-      } catch (err) {
-        report.errors.push(`analysis: ${(err as Error).message}`);
-      }
-    }
-    reports.push(report);
-  }
+  for (const account of all) reports.push(await syncAccount(db, account, opts));
   return reports;
 }

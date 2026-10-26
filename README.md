@@ -23,7 +23,7 @@ Without the Supabase variables, local development skips login and runs as a sing
 
 ## How it works
 
-1. `npm run sync` (or the hourly `GET /api/cron/sync`) asks each connection's connector for comments since its last sync.
+1. `npm run sync`, the scheduled `GET /api/cron/sync`, or the Settings button asks each connection's connector for comments since its last sync.
 2. Each comment is checked against the page's own id, handle and any staff or agency ids on the account (`src/lib/filter.ts`). The business's own comments are stored with `is_owned = true`, excluded from sentiment, and used for the reply rate.
 3. Unscored public comments go to Claude in batches of 25 with the account's own topic list (`src/lib/analysis`). Results are stored per prompt version, so changing the prompt never mixes old and new scores.
 4. The dashboard reads from Postgres and filters by date range and platform.
@@ -79,7 +79,7 @@ Owners edit each business's topics, the staff or agency accounts that speak for 
 | `CRON_SECRET` | Another random string of 32+ characters |
 | `ANTHROPIC_API_KEY` | Claude API key, from console.anthropic.com |
 
-3. Deploy. The build applies database migrations, and Vercel Cron calls `/api/cron/sync` every hour (on the Hobby plan, Vercel limits crons to once a day).
+3. Deploy. The build applies database migrations, and Vercel Cron calls `/api/cron/sync` once a day, the most often Vercel's free Hobby plan allows. On Vercel Pro, change the schedule in `vercel.json` to `0 * * * *` for hourly. Anyone on a team can also press **Check for new comments now** in Settings.
 4. In Supabase → Authentication → URL Configuration, set the Site URL to the Vercel address and add `https://<your-app>.vercel.app/auth/callback` to the redirect URLs.
 5. Open the app, create an account, confirm your email, and add your business.
 

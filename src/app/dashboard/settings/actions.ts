@@ -3,7 +3,8 @@
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { accounts, invites, memberships, topics } from "@/db/schema";
-import { requireOwner } from "@/lib/auth/context";
+import { requireContext, requireOwner } from "@/lib/auth/context";
+import { syncAccount } from "@/lib/sync";
 
 const done = () => revalidatePath("/dashboard/settings");
 const text = (f: FormData, k: string, max: number) => String(f.get(k) ?? "").trim().slice(0, max);
@@ -91,4 +92,11 @@ export async function removeMember(f: FormData) {
   }
   await db.delete(memberships).where(eq(memberships.id, id));
   done();
+}
+
+/** Lets anyone on the team pull new comments without waiting for the scheduled run. */
+export async function checkNow() {
+  const { db, current } = await requireContext();
+  await syncAccount(db, current.account);
+  revalidatePath("/dashboard", "layout");
 }
