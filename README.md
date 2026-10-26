@@ -30,8 +30,8 @@ Without the Supabase variables, local development skips login and runs as a sing
 
 | Platform | Status |
 | --- | --- |
-| Facebook Pages | Connector written (`src/connectors/meta.ts`), needs a Meta app and Page token |
-| Instagram professional accounts | Connector written, same Meta app |
+| Facebook Pages | Owners connect with "Connect Facebook & Instagram" in Settings (needs a Meta app, see below) |
+| Instagram professional accounts | Connected along with the Facebook Page they're linked to |
 | LinkedIn Company Pages | Waiting on Community Management API approval |
 | TikTok business accounts | Waiting on TikTok API for Business approval |
 
@@ -45,6 +45,9 @@ Without the Supabase variables, local development skips login and runs as a sing
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase project used for login. Required in production. |
 | `TOKEN_ENCRYPTION_KEY` | 32 random bytes, base64. Encrypts platform access tokens at rest. |
 | `CRON_SECRET` | Bearer token the hourly cron must send. |
+| `META_APP_ID`, `META_APP_SECRET` | Meta app used for "Connect Facebook & Instagram". |
+| `META_LOGIN_CONFIG_ID` | Only for Facebook Login for Business: the configuration that lists the permissions. |
+| `APP_URL` | Public address of the app, so the Facebook redirect address always matches the registered one. |
 | `META_GRAPH_VERSION` | Graph API version for the Meta connectors. |
 
 Owners edit each business's topics, the staff or agency accounts that speak for it, and its team on the Settings tab, so every business can describe itself without code changes.
@@ -83,18 +86,27 @@ Owners edit each business's topics, the staff or agency accounts that speak for 
 4. In Supabase → Authentication → URL Configuration, set the Site URL to the Vercel address and add `https://<your-app>.vercel.app/auth/callback` to the redirect URLs.
 5. Open the app, create an account, confirm your email, and add your business.
 
+## Connect Facebook and Instagram
+
+1. At developers.facebook.com, create an app (type Business) and add **Facebook Login for Business**.
+2. Under its settings, add `<app address>/api/connect/meta/callback` to **Valid OAuth Redirect URIs**.
+3. Under **Configurations**, create one with a user access token and these permissions: `pages_show_list`, `pages_read_engagement`, `pages_read_user_content`, `business_management`, `instagram_basic`, `instagram_manage_comments`. Put its id in `META_LOGIN_CONFIG_ID`. (Apps using classic Facebook Login can leave it empty; the permissions are then requested directly.)
+4. Set `META_APP_ID`, `META_APP_SECRET` and `APP_URL` in Vercel and redeploy.
+5. An owner presses **Connect Facebook & Instagram** in Settings and selects the Page. Every Page granted becomes a Facebook connection, and each linked Instagram professional account becomes an Instagram connection. Page tokens are stored encrypted and don't expire.
+
+While the Meta app is in Development mode, only people with a role on the app can connect. Other businesses need Meta App Review for those permissions.
+
 ## Security notes
 
 - Every table carries `account_id`. Every page and action loads the signed-in user's membership first and scopes each query and update to that account; a business id in a cookie or form is only honoured when the user belongs to it.
 - Middleware refreshes the Supabase session and sends signed-out visitors to `/login`; only the login page, auth links and the cron route (which checks `CRON_SECRET`) are public.
 - Row level security is on for every table with no policies, so the Supabase REST API cannot read or write app data with the public anon key. The app reaches the database through its own server-side connection.
-- Login redirects only go to paths on this site.
+- Login redirects only go to paths on this site. The Facebook connect flow carries a random state tied to the browser by an http-only cookie and to the business it started from, and only owners can start or finish it.
 - Comment text is sent to Claude as data with an instruction never to follow it, and model output is validated against a schema before it is stored.
 - Platform access tokens are stored encrypted with AES-256-GCM (`src/lib/crypto.ts`) and decrypted only inside the connectors.
 
 ## Next
 
-1. Connect Facebook and Instagram with one click (Meta login), storing encrypted tokens and refreshing them.
-2. Email or Slack alert for each new high-risk comment, a weekly summary email, and invite emails.
-3. Meta App Review, then LinkedIn and TikTok connectors as access is approved.
-4. Billing once pricing is settled.
+1. Email or Slack alert for each new high-risk comment, a weekly summary email, and invite emails.
+2. Meta App Review, then LinkedIn and TikTok connectors as access is approved.
+3. Billing once pricing is settled.

@@ -3,9 +3,11 @@ import { Frame } from "@/components/Frame";
 import { connections, invites, memberships, topics } from "@/db/schema";
 import { requireContext } from "@/lib/auth/context";
 import { PLATFORM_LABELS } from "@/lib/dashboard";
+import { metaConfigured } from "@/lib/meta-oauth";
 import {
   addTopic,
   checkNow,
+  disconnect,
   inviteMember,
   removeMember,
   removeTopic,
@@ -16,7 +18,23 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function Settings() {
+const CONNECT_MESSAGES: Record<string, string> = {
+  not_configured: "Facebook and Instagram can't be connected until META_APP_ID and META_APP_SECRET are set.",
+  expired: "That sign-in took too long or was started from another business. Please try again.",
+  cancelled: "Facebook sign-in was cancelled, so nothing was connected.",
+  no_pages: "Facebook didn't share any Pages. Try again and select your Page when Facebook asks.",
+  failed: "Facebook didn't accept the sign-in. Please try again.",
+};
+
+function connectMessage(status: string | undefined) {
+  if (!status) return null;
+  const ok = /^ok_(\d+)$/.exec(status);
+  if (ok) return `Connected ${ok[1]} page${ok[1] === "1" ? "" : "s"}. Press "Check for new comments now" to pull in comments.`;
+  return CONNECT_MESSAGES[status] ?? null;
+}
+
+export default async function Settings({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const notice = connectMessage((await searchParams).connect);
   const ctx = await requireContext();
   const { db } = ctx;
   const account = ctx.current.account;
@@ -31,6 +49,7 @@ export default async function Settings() {
   return (
     <Frame ctx={ctx} active="settings" filters={null}>
       {!owner && <div className="notice">Only owners can change these settings.</div>}
+      {notice && <div className="notice">{notice}</div>}
 
       <section className="card">
         <h2>Business</h2>
@@ -61,11 +80,30 @@ export default async function Settings() {
                 <td className="muted">
                   {c.lastSyncedAt ? `Last checked ${c.lastSyncedAt.toLocaleString("en-US")}` : "Not checked yet"}
                 </td>
+                <td>
+                  {owner && (
+                    <form action={disconnect}>
+                      <input type="hidden" name="id" value={c.id} />
+                      <button className="small">Disconnect</button>
+                    </form>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        <p className="muted">Connecting Facebook and Instagram with one click arrives once the Meta app is set up.</p>
+        {owner && metaConfigured() && (
+          <p>
+            <a className="button" href="/api/connect/meta/start">
+              Connect Facebook &amp; Instagram
+            </a>
+          </p>
+        )}
+        <p className="muted">
+          {metaConfigured()
+            ? "Sign in with a Facebook account that manages your Page. Instagram professional accounts linked to the Page are connected too. Disconnecting removes that page's comments from the dashboard."
+            : "Facebook and Instagram connect here once the Meta app id and secret are added to the server settings."}
+        </p>
       </section>
 
       <section className="card">
