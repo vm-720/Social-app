@@ -1,21 +1,37 @@
 // Creates the AAA WCNY account with sample comments on all four platforms.
 //   npm run seed:demo                        sample scores written by hand (no API key needed)
 //   npm run seed:demo -- --score-with-claude  scores the sample comments with Claude instead
+//   npm run seed:demo -- --owner you@example.com  invites that email as owner (for use with Supabase login)
 import "dotenv/config";
 import { and, eq, inArray } from "drizzle-orm";
 import { DEMO_ACCOUNT, DEMO_COMMENTS, DEMO_PAGES, DEMO_TOPICS } from "../src/connectors/demo-data";
 import { getDb, runMigrations } from "../src/db/client";
-import { accounts, analyses, comments, connections, topics, type Platform } from "../src/db/schema";
+import { accounts, analyses, comments, connections, invites, memberships, topics, type Platform } from "../src/db/schema";
+import { DEV_USER } from "../src/lib/auth/config";
 import { PROMPT_VERSION } from "../src/lib/analysis/prompt";
 import { analyzeAccount, ingestAccount, type SyncReport } from "../src/lib/sync";
 
 const withClaude = process.argv.includes("--score-with-claude");
+const ownerFlag = process.argv.indexOf("--owner");
+const ownerEmail = ownerFlag > -1 ? process.argv[ownerFlag + 1]?.toLowerCase() : undefined;
 
 await runMigrations();
 const db = getDb();
 
 await db.insert(accounts).values(DEMO_ACCOUNT).onConflictDoNothing();
 const [account] = await db.select().from(accounts).where(eq(accounts.slug, DEMO_ACCOUNT.slug));
+
+// The local dev user (no Supabase) owns the demo; a real owner arrives by invite.
+await db
+  .insert(memberships)
+  .values({ accountId: account.id, userId: DEV_USER.id, email: DEV_USER.email, role: "owner" })
+  .onConflictDoNothing();
+if (ownerEmail) {
+  await db
+    .insert(invites)
+    .values({ accountId: account.id, email: ownerEmail, role: "owner", invitedBy: "seed" })
+    .onConflictDoNothing();
+}
 
 await db
   .insert(topics)

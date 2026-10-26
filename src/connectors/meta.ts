@@ -1,4 +1,5 @@
 import type { Connection } from "@/db/schema";
+import { decryptSecret } from "@/lib/crypto";
 import type { RawComment } from "@/lib/types";
 import type { Connector } from "./types";
 
@@ -40,7 +41,7 @@ async function graphAll<T>(path: string, params: Record<string, string>, token: 
 
 function requireToken(c: Connection): string {
   if (!c.accessToken) throw new Error(`Connection ${c.displayName} has no access token`);
-  return c.accessToken;
+  return decryptSecret(c.accessToken);
 }
 
 interface FbPost {

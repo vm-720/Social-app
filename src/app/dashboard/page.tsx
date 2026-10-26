@@ -1,9 +1,8 @@
 import { Frame } from "@/components/Frame";
 import { SentimentMix } from "@/components/SentimentMix";
 import { TrendChart } from "@/components/TrendChart";
-import { getDb } from "@/db/client";
-import { buildOverview, getCurrentAccount, loadComments, parseFilters, PLATFORM_LABELS, PLATFORMS } from "@/lib/dashboard";
-import { NoAccount } from "./no-account";
+import { requireContext } from "@/lib/auth/context";
+import { buildOverview, loadComments, parseFilters, PLATFORM_LABELS, PLATFORMS } from "@/lib/dashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +20,9 @@ function fmtNet(n: number | null) {
 
 export default async function Overview({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const filters = parseFilters(await searchParams);
-  const db = getDb();
-  const account = await getCurrentAccount(db);
-  if (!account) return <NoAccount />;
+  const ctx = await requireContext();
+  const { db } = ctx;
+  const account = ctx.current.account;
 
   const since = new Date(Date.now() - 2 * filters.days * 24 * 60 * 60 * 1000);
   const all = await loadComments(db, account.id, since);
@@ -34,7 +33,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const trendData = o.trend.map((t) => ({ week: t.week, ...t.values }));
 
   return (
-    <Frame accountName={account.name} active="overview" filters={filters}>
+    <Frame ctx={ctx} active="overview" filters={filters}>
       <section className="tiles">
         <div className="tile">
           <div className="label">Net Sentiment</div>

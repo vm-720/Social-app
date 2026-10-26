@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { CommentItem } from "@/components/CommentItem";
 import { Frame, hrefWith } from "@/components/Frame";
-import { getDb } from "@/db/client";
-import { buildRiskQueue, getCurrentAccount, loadComments, parseFilters, windowStart } from "@/lib/dashboard";
-import { NoAccount } from "../no-account";
+import { requireContext } from "@/lib/auth/context";
+import { buildRiskQueue, loadComments, parseFilters, windowStart } from "@/lib/dashboard";
 import { setHandled } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -12,9 +11,9 @@ export default async function Risk({ searchParams }: { searchParams: Promise<Rec
   const params = await searchParams;
   const filters = parseFilters(params);
   const showHandled = params.handled === "1";
-  const db = getDb();
-  const account = await getCurrentAccount(db);
-  if (!account) return <NoAccount />;
+  const ctx = await requireContext();
+  const { db } = ctx;
+  const account = ctx.current.account;
 
   const list = (await loadComments(db, account.id, windowStart(filters))).filter(
     (c) => !c.isOwned && (!filters.platform || c.platform === filters.platform),
@@ -23,7 +22,7 @@ export default async function Risk({ searchParams }: { searchParams: Promise<Rec
   const high = queue.filter((c) => c.analysis!.riskLevel === "high").length;
 
   return (
-    <Frame accountName={account.name} active="risk" filters={filters}>
+    <Frame ctx={ctx} active="risk" filters={filters}>
       <section className="card">
         <h2>Risk queue</h2>
         <p className="lead">

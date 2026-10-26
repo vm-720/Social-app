@@ -1,6 +1,6 @@
 import { and, eq, gte } from "drizzle-orm";
 import type { Db } from "@/db/client";
-import { accounts, analyses, comments, topics, type Platform } from "@/db/schema";
+import { analyses, comments, topics, type Platform } from "@/db/schema";
 import { PROMPT_VERSION } from "./analysis/prompt";
 import { emptyCounts, netSentiment, totalOf, type SentimentCounts } from "./metrics";
 
@@ -26,15 +26,6 @@ export function parseFilters(params: Record<string, string | string[] | undefine
     days: (RANGES as readonly number[]).includes(days) ? days : 30,
     platform: platform && PLATFORMS.includes(platform) ? platform : null,
   };
-}
-
-/** Until login exists, every visitor sees the default account. */
-export async function getCurrentAccount(db: Db) {
-  const slug = process.env.DEFAULT_ACCOUNT_SLUG;
-  const rows = slug
-    ? await db.select().from(accounts).where(eq(accounts.slug, slug))
-    : await db.select().from(accounts).limit(1);
-  return rows[0] ?? null;
 }
 
 export interface ScoredComment {

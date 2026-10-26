@@ -15,6 +15,7 @@ import {
 export const platformEnum = pgEnum("platform", ["facebook", "instagram", "linkedin", "tiktok"]);
 export const sentimentEnum = pgEnum("sentiment", ["positive", "neutral", "negative", "mixed"]);
 export const riskLevelEnum = pgEnum("risk_level", ["none", "low", "medium", "high"]);
+export const roleEnum = pgEnum("member_role", ["owner", "member"]);
 
 /** A business using the app. Every other row hangs off an account. */
 export const accounts = pgTable("accounts", {
@@ -25,6 +26,38 @@ export const accounts = pgTable("accounts", {
   extraOwnAuthorIds: jsonb("extra_own_author_ids").$type<string[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Who can see an account. `userId` is the Supabase Auth user id. */
+export const memberships = pgTable(
+  "memberships",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    email: text("email").notNull(),
+    role: roleEnum("role").notNull().default("member"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("memberships_account_user").on(t.accountId, t.userId), index("memberships_user").on(t.userId)],
+);
+
+/** An invitation by email, turned into a membership when that person signs in with a verified email. */
+export const invites = pgTable(
+  "invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: roleEnum("role").notNull().default("member"),
+    invitedBy: text("invited_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("invites_account_email").on(t.accountId, t.email), index("invites_email").on(t.email)],
+);
 
 /** One connected page or account on a platform. */
 export const connections = pgTable(
@@ -40,7 +73,7 @@ export const connections = pgTable(
     displayName: text("display_name").notNull(),
     /** Username / handle, used as a second own-comment check where the platform exposes it. */
     handle: text("handle"),
-    /** OAuth access token. Encrypt at rest before storing real tokens (see README). */
+    /** OAuth access token, encrypted with TOKEN_ENCRYPTION_KEY (see src/lib/crypto.ts). */
     accessToken: text("access_token"),
     tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
     /** "demo" connections are fed by sample data instead of a platform API. */
@@ -126,4 +159,6 @@ export type Connection = typeof connections.$inferSelect;
 export type Comment = typeof comments.$inferSelect;
 export type Analysis = typeof analyses.$inferSelect;
 export type Topic = typeof topics.$inferSelect;
+export type Membership = typeof memberships.$inferSelect;
+export type Role = (typeof roleEnum.enumValues)[number];
 export type Platform = (typeof platformEnum.enumValues)[number];

@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { CommentItem } from "@/components/CommentItem";
 import { Frame, hrefWith } from "@/components/Frame";
-import { getDb } from "@/db/client";
-import { buildTopics, getCurrentAccount, loadComments, loadTopicNames, parseFilters, windowStart } from "@/lib/dashboard";
-import { NoAccount } from "../no-account";
+import { requireContext } from "@/lib/auth/context";
+import { buildTopics, loadComments, loadTopicNames, parseFilters, windowStart } from "@/lib/dashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +14,9 @@ function fmtNet(n: number | null) {
 export default async function Topics({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const params = await searchParams;
   const filters = parseFilters(params);
-  const db = getDb();
-  const account = await getCurrentAccount(db);
-  if (!account) return <NoAccount />;
+  const ctx = await requireContext();
+  const { db } = ctx;
+  const account = ctx.current.account;
 
   const list = (await loadComments(db, account.id, windowStart(filters))).filter(
     (c) => !c.isOwned && c.analysis && (!filters.platform || c.platform === filters.platform),
@@ -31,7 +30,7 @@ export default async function Topics({ searchParams }: { searchParams: Promise<R
     : [];
 
   return (
-    <Frame accountName={account.name} active="topics" filters={filters}>
+    <Frame ctx={ctx} active="topics" filters={filters}>
       <section className="card">
         <h2>Net Sentiment by topic</h2>
         <p className="lead">
