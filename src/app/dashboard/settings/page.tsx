@@ -5,6 +5,7 @@ import { requireContext } from "@/lib/auth/context";
 import { PLATFORM_LABELS } from "@/lib/dashboard";
 import {
   addTopic,
+  checkNow,
   inviteMember,
   removeMember,
   removeTopic,
@@ -41,7 +42,12 @@ export default async function Settings() {
 
       <section className="card">
         <h2>Connected pages</h2>
-        <p className="lead">Comments are fetched from these every hour.</p>
+        <form action={checkNow} className="inline-form" style={{ marginTop: 0, marginBottom: 12 }}>
+          <span className="lead" style={{ margin: 0, flex: 1 }}>
+            New comments are fetched on a schedule, or right now with this button.
+          </span>
+          <button className="small">Check for new comments now</button>
+        </form>
         {conns.length === 0 && <div className="empty">No pages connected yet.</div>}
         <table className="list">
           <tbody>
