@@ -52,3 +52,14 @@ describe("slugify", () => {
     expect(slugify("AAA Western & Central NY!")).not.toBe(s);
   });
 });
+
+describe("token encryption key formats", () => {
+  it("accepts a long passphrase as well as base64 bytes", () => {
+    const saved = process.env.TOKEN_ENCRYPTION_KEY;
+    process.env.TOKEN_ENCRYPTION_KEY = "correct-horse-battery-staple-and-more-words";
+    expect(decryptSecret(encryptSecret("t"))).toBe("t");
+    process.env.TOKEN_ENCRYPTION_KEY = "too-short";
+    expect(() => encryptSecret("t")).toThrow();
+    process.env.TOKEN_ENCRYPTION_KEY = saved;
+  });
+});

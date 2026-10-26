@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 
-// AES-256-GCM for platform access tokens at rest. The key is 32 random bytes, base64 encoded:
-//   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+// AES-256-GCM for platform access tokens at rest. TOKEN_ENCRYPTION_KEY is either 32 random bytes,
+// base64 encoded (node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"),
+// or any random string of at least 32 characters, e.g. from a password manager's generator.
 
 const PREFIX = "v1";
 
@@ -9,8 +10,9 @@ function key(): Buffer {
   const raw = process.env.TOKEN_ENCRYPTION_KEY;
   if (!raw) throw new Error("TOKEN_ENCRYPTION_KEY is not set");
   const k = Buffer.from(raw, "base64");
-  if (k.length !== 32) throw new Error("TOKEN_ENCRYPTION_KEY must be 32 bytes, base64 encoded");
-  return k;
+  if (k.length === 32) return k;
+  if (raw.length >= 32) return crypto.createHash("sha256").update(raw, "utf8").digest();
+  throw new Error("TOKEN_ENCRYPTION_KEY must be at least 32 characters");
 }
 
 export function encryptSecret(plain: string): string {

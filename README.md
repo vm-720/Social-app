@@ -63,7 +63,25 @@ Owners edit each business's topics, the staff or agency accounts that speak for 
 3. In Project Settings → Database, copy the connection string (the pooler, port 6543) into `DATABASE_URL`. This one includes the database password, so keep it in the host's environment settings only.
 4. In Authentication → URL Configuration, set the Site URL to the app's address and add `<app address>/auth/callback` to the redirect URLs.
 5. For Google sign-in, turn on the Google provider under Authentication → Providers and follow its steps.
-6. Run `npm run db:migrate` once against the new database. To put the demo data in it and make yourself its owner, run `npm run seed:demo -- --owner you@example.com`.
+6. Migrations run automatically on each Vercel deploy (see below). To load the AAA demo data into this database and make yourself its owner, run `npm run seed:demo -- --owner you@example.com` with `DATABASE_URL` set.
+
+## Deploy to Vercel
+
+1. At vercel.com, choose **Add New → Project**, import this GitHub repo, and keep the Next.js defaults.
+2. Before the first deploy, add these under **Environment Variables**:
+
+| Name | Value |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase Project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase publishable (or anon) key |
+| `DATABASE_URL` | Supabase → Connect → Transaction pooler string, with your database password filled in |
+| `TOKEN_ENCRYPTION_KEY` | Any random string of 32+ characters (a password generator works) |
+| `CRON_SECRET` | Another random string of 32+ characters |
+| `ANTHROPIC_API_KEY` | Claude API key, from console.anthropic.com |
+
+3. Deploy. The build applies database migrations, and Vercel Cron calls `/api/cron/sync` every hour (on the Hobby plan, Vercel limits crons to once a day).
+4. In Supabase → Authentication → URL Configuration, set the Site URL to the Vercel address and add `https://<your-app>.vercel.app/auth/callback` to the redirect URLs.
+5. Open the app, create an account, confirm your email, and add your business.
 
 ## Security notes
 
