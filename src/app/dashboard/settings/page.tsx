@@ -1,9 +1,12 @@
 import { asc, count, eq } from "drizzle-orm";
+import { cookies } from "next/headers";
 import { Frame } from "@/components/Frame";
 import { comments, connections, invites, memberships, topics } from "@/db/schema";
 import { requireContext } from "@/lib/auth/context";
 import { PLATFORM_LABELS } from "@/lib/dashboard";
 import { metaConfigured } from "@/lib/meta-oauth";
+import { DEFAULT_VOICE, REPLY_LENGTHS, TONES } from "@/lib/replies";
+import { parseTheme, THEME_COOKIE, THEMES } from "@/lib/theme";
 import {
   addTopic,
   checkNow,
@@ -14,6 +17,8 @@ import {
   renameBusiness,
   revokeInvite,
   saveBrandAccounts,
+  saveBrandVoice,
+  setTheme,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +67,8 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       .groupBy(comments.connectionId),
   ]);
   const storedBy = new Map(stored.map((r) => [r.connectionId, r.n]));
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
+  const voice = account.brandVoice ?? DEFAULT_VOICE;
 
   return (
     <Frame ctx={ctx} active="settings" filters={null}>
@@ -70,11 +77,107 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       {checked && <div className="notice">{checked}</div>}
       {problem && <div className="notice">Something went wrong: {problem}</div>}
 
+      <div className="page-head">
+        <h1>Settings</h1>
+      </div>
+
+      <section className="card">
+        <h2>Appearance</h2>
+        <p className="lead">Light is the default. Your choice is saved on this device.</p>
+        <form action={setTheme} className="themes" role="radiogroup" aria-label="Theme">
+          {THEMES.map((t) => (
+            <button
+              key={t.id}
+              type="submit"
+              name="theme"
+              value={t.id}
+              role="radio"
+              aria-checked={theme === t.id}
+              className="theme-option"
+            >
+              <span className={`theme-thumb thumb-${t.id}`} aria-hidden="true">
+                <span />
+                <span />
+              </span>
+              {t.label}
+            </button>
+          ))}
+        </form>
+      </section>
+
+      <section className="card" id="brand-voice">
+        <h2>Brand voice</h2>
+        <p className="lead">
+          Claude uses this to write suggested replies. Nothing is posted until someone on your team copies a reply and
+          posts it.
+        </p>
+        {params.voice === "saved" && <div className="form-info">Saved. New suggestions will use this voice.</div>}
+        <form action={saveBrandVoice} className="stack-form voice-form">
+          <label>
+            How you sound
+            <textarea
+              name="description"
+              rows={4}
+              maxLength={1500}
+              defaultValue={voice.description}
+              disabled={!owner}
+              placeholder="Friendly and direct, like a helpful neighbor. We own mistakes plainly and say what happens next. Short sentences, no corporate jargon."
+            />
+          </label>
+          <fieldset className="tones" disabled={!owner}>
+            <legend>Tone</legend>
+            {TONES.map((t) => (
+              <label key={t} className="tone">
+                <input type="checkbox" name="tones" value={t} defaultChecked={voice.tones.includes(t)} />
+                <span>{t}</span>
+              </label>
+            ))}
+          </fieldset>
+          <div className="voice-grid">
+            <label>
+              Always
+              <input
+                name="always"
+                maxLength={500}
+                defaultValue={voice.always}
+                disabled={!owner}
+                placeholder="Use the person's first name. Offer a DM for account details."
+              />
+            </label>
+            <label>
+              Never
+              <input
+                name="never"
+                maxLength={500}
+                defaultValue={voice.never}
+                disabled={!owner}
+                placeholder="Admit fault on safety or legal claims. Use emojis."
+              />
+            </label>
+            <label>
+              Sign replies as
+              <input name="signOff" maxLength={80} defaultValue={voice.signOff} disabled={!owner} placeholder="The team at your business" />
+            </label>
+            <label>
+              Reply length
+              <select name="length" defaultValue={voice.length} disabled={!owner}>
+                {REPLY_LENGTHS.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {owner && <button className="btn primary">Save brand voice</button>}
+        </form>
+      </section>
+
       <section className="card">
         <h2>Business</h2>
         <form action={renameBusiness} className="inline-form">
           <input name="name" defaultValue={account.name} maxLength={120} required disabled={!owner} aria-label="Business name" />
-          {owner && <button className="small">Save</button>}
+          {owner && <button className="btn sm">Save</button>}
         </form>
       </section>
 
@@ -84,7 +187,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           <span className="lead" style={{ margin: 0, flex: 1 }}>
             New comments are fetched on a schedule, or right now with this button.
           </span>
-          <button className="small">Check for new comments now</button>
+          <button className="btn sm">Check for new comments now</button>
         </form>
         {conns.length === 0 && <div className="empty">No pages connected yet.</div>}
         <table className="list">
@@ -104,7 +207,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
                   {owner && (
                     <form action={disconnect}>
                       <input type="hidden" name="id" value={c.id} />
-                      <button className="small">Disconnect</button>
+                      <button className="btn sm">Disconnect</button>
                     </form>
                   )}
                 </td>
@@ -141,7 +244,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
                   {owner && (
                     <form action={removeTopic}>
                       <input type="hidden" name="id" value={t.id} />
-                      <button className="small">Remove</button>
+                      <button className="btn sm">Remove</button>
                     </form>
                   )}
                 </td>
@@ -153,7 +256,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
           <form action={addTopic} className="inline-form">
             <input name="name" placeholder="Topic name" maxLength={60} required aria-label="Topic name" />
             <input name="description" placeholder="What it covers (helps Claude)" maxLength={200} aria-label="Description" />
-            <button className="small">Add topic</button>
+            <button className="btn sm">Add topic</button>
           </form>
         )}
       </section>
@@ -166,7 +269,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
         </p>
         <form action={saveBrandAccounts} className="stack-form">
           <textarea name="ids" rows={4} defaultValue={account.extraOwnAuthorIds.join("\n")} disabled={!owner} aria-label="Account ids" />
-          {owner && <button className="small">Save</button>}
+          {owner && <button className="btn sm">Save</button>}
         </form>
       </section>
 
@@ -182,7 +285,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
                   {owner && m.userId !== ctx.user.id && (
                     <form action={removeMember}>
                       <input type="hidden" name="id" value={m.id} />
-                      <button className="small">Remove</button>
+                      <button className="btn sm">Remove</button>
                     </form>
                   )}
                 </td>
@@ -196,7 +299,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
                   {owner && (
                     <form action={revokeInvite}>
                       <input type="hidden" name="id" value={inv.id} />
-                      <button className="small">Cancel invite</button>
+                      <button className="btn sm">Cancel invite</button>
                     </form>
                   )}
                 </td>
@@ -211,7 +314,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
               <option value="member">Member (view and mark handled)</option>
               <option value="owner">Owner (also edit settings and team)</option>
             </select>
-            <button className="small">Invite</button>
+            <button className="btn sm">Invite</button>
           </form>
         )}
         <p className="muted">Invited people get access the first time they sign in with that email address.</p>

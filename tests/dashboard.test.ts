@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildOverview, buildRiskQueue, buildTopics, weekStart, type ScoredComment } from "@/lib/dashboard";
+import {
+  buildDrivers,
+  buildInbox,
+  buildOverview,
+  buildRiskQueue,
+  buildTopics,
+  type ScoredComment,
+} from "@/lib/dashboard";
 
 const now = new Date("2026-10-26T12:00:00Z");
 const daysAgo = (d: number) => new Date(now.getTime() - d * 86400000);
@@ -13,6 +20,7 @@ function cm(over: Partial<ScoredComment> & { a?: Partial<NonNullable<ScoredComme
     platform: "facebook",
     externalId: `e${i}`,
     parentExternalId: null,
+    postExternalId: "p1",
     postUrl: null,
     authorName: "x",
     text: "t",
@@ -44,8 +52,9 @@ describe("buildOverview", () => {
     const list = [asked, reply, cm({}), cm({ postedAt: daysAgo(10), a: { sentiment: "negative" } })];
     const o = buildOverview(list, { days: 7, platform: null }, now);
     expect(o.scored).toBe(2);
-    expect(o.net).toBe(0);
-    expect(o.prevNet).toBe(-100);
+    expect(o.share).toBe(50);
+    expect(o.prevShare).toBe(0);
+    expect(o.posts).toBe(1);
     expect(o.needsReply).toBe(1);
     expect(o.replied).toBe(1);
   });
@@ -68,21 +77,58 @@ describe("buildRiskQueue", () => {
 });
 
 describe("buildTopics", () => {
-  it("scores each topic and sorts by volume", () => {
+  it("counts comments, distinct posts and the positive share per topic, sorted by volume", () => {
     const rows = buildTopics(
-      [cm({ a: { topics: ["Travel", "Other"] } }), cm({ a: { topics: ["Travel"], sentiment: "negative" } })],
+      [
+        cm({ a: { topics: ["Travel", "Other"] } }),
+        cm({ postExternalId: "p2", a: { topics: ["Travel"], sentiment: "negative" } }),
+        cm({ postExternalId: "p2", a: { topics: ["Travel"], sentiment: "neutral" } }),
+      ],
       ["Travel", "Insurance"],
     );
-    expect(rows).toEqual([
-      { topic: "Travel", total: 2, net: 0, negative: 1 },
-      { topic: "Other", total: 1, net: 100, negative: 0 },
+    expect(rows.map((r) => [r.topic, r.total, r.posts, r.share])).toEqual([
+      ["Travel", 3, 2, 50],
+      ["Other", 1, 1, 100],
     ]);
   });
 });
 
-describe("weekStart", () => {
-  it("returns the Monday of the week", () => {
-    expect(weekStart(new Date("2026-10-26T12:00:00Z"))).toBe("2026-10-26");
-    expect(weekStart(new Date("2026-11-01T12:00:00Z"))).toBe("2026-10-26");
+describe("buildDrivers", () => {
+  it("splits topics into lifting and pulling, ignoring topics with fewer than two opinions", () => {
+    const rows = buildTopics(
+      [
+        cm({ a: { topics: ["Travel"] } }),
+        cm({ a: { topics: ["Travel"] } }),
+        cm({ a: { topics: ["Insurance"], sentiment: "negative" } }),
+        cm({ a: { topics: ["Insurance"], sentiment: "negative" } }),
+        cm({ a: { topics: ["Discounts"] } }),
+      ],
+      ["Travel", "Insurance", "Discounts"],
+    );
+    const d = buildDrivers(rows);
+    expect(d.up.map((r) => r.topic)).toEqual(["Travel"]);
+    expect(d.down.map((r) => r.topic)).toEqual(["Insurance"]);
+  });
+});
+
+describe("buildInbox", () => {
+  it("shows comments waiting for a reply, risky first, and moves replied or handled ones out", () => {
+    const plain = cm({ postedAt: daysAgo(0), a: { needsReply: true } });
+    const risky = cm({ postedAt: daysAgo(3), a: { needsReply: true, riskLevel: "high" } });
+    const answered = cm({ a: { needsReply: true } });
+    const reply = cm({ isOwned: true, parentExternalId: answered.externalId, a: null });
+    const handled = cm({ handledAt: now, a: { needsReply: true } });
+    const quiet = cm({ a: { needsReply: false } });
+    const all = [plain, risky, answered, reply, handled, quiet];
+    expect(buildInbox(all, { view: "waiting" }).map((c) => c.id)).toEqual([risky.id, plain.id]);
+    expect(buildInbox(all, { view: "handled" }).map((c) => c.id).sort()).toEqual([answered.id, handled.id].sort());
+    expect(buildInbox(all, { view: "all" })).toHaveLength(5);
+  });
+
+  it("filters by topic and search text", () => {
+    const a = cm({ text: "Great tow driver", a: { topics: ["Roadside"] } });
+    const b = cm({ text: "Slow tow", a: { topics: ["Other"] } });
+    expect(buildInbox([a, b], { view: "all", topic: "Roadside" }).map((c) => c.id)).toEqual([a.id]);
+    expect(buildInbox([a, b], { view: "all", q: "slow" }).map((c) => c.id)).toEqual([b.id]);
   });
 });

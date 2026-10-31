@@ -1,10 +1,12 @@
 # Social Sentiment
 
-A web app that watches a business's social pages, drops the business's own comments, and uses Claude to score every public comment for sentiment, topic and risk. Each business gets a dashboard with three views:
+A web app that watches a business's social pages, drops the business's own comments, and uses Claude to score every public comment for sentiment, topic and risk. Each business gets five views:
 
-- **Overview**: Net Sentiment (positive minus negative, -100 to +100) with change from the previous period, weekly trend by platform, sentiment mix, open high-risk count and reply rate.
-- **Topics**: Net Sentiment per topic, with the comments behind each topic one click away.
+- **Briefing**: a plain-language verdict ("People are mostly positive about you") from the share of positive comments among those that took a side, on a five-step scale from Very negative to Very positive. Shows the change from the previous period, which topics are lifting or pulling sentiment, where each topic and platform lands, and who is waiting for a reply.
+- **Comments**: every public comment with a link to its post, filtered by waiting for a reply, positive, negative, risky or handled, by topic, or by search. Each comment can get a suggested reply written in the business's brand voice, which can be edited, made shorter, warmer or more formal, then copied and pasted on the post.
+- **Topics**: each topic's positive share as a dot on a scale from all negative to all positive, with the number of comments and posts tagged with it, and the comments behind it.
 - **Risk**: high and medium risk comments with the reason and category, and a "Mark handled" button.
+- **Settings**: brand voice, appearance (light by default, dark, or match the device), connected pages, topics and team.
 
 ## Run it locally
 
@@ -42,6 +44,7 @@ Without the Supabase variables, local development skips login and runs as a sing
 | `DATABASE_URL` | Postgres connection string (Supabase or any Postgres). Empty = local PGlite. |
 | `ANTHROPIC_API_KEY` | Claude API key for scoring. Without it, sync stores comments but does not score them. |
 | `ANALYSIS_MODEL` | Model used for scoring, default `claude-opus-5-5`. `claude-haiku-5-5` costs much less. |
+| `REPLY_MODEL` | Model used for suggested replies. Defaults to `ANALYSIS_MODEL`. |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase project used for login. Required in production. |
 | `TOKEN_ENCRYPTION_KEY` | 32 random bytes, base64. Encrypts platform access tokens at rest. |
 | `CRON_SECRET` | Bearer token the hourly cron must send. |

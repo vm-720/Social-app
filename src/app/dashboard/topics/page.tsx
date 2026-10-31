@@ -1,15 +1,19 @@
 import Link from "next/link";
-import { CommentItem } from "@/components/CommentItem";
+import { CommentCard } from "@/components/CommentCard";
 import { Frame, hrefWith } from "@/components/Frame";
+import { DotChart, VerdictChip } from "@/components/Sentiment";
 import { requireContext } from "@/lib/auth/context";
-import { buildTopics, loadComments, loadTopicNames, parseFilters, windowStart } from "@/lib/dashboard";
+import {
+  buildTopics,
+  loadComments,
+  loadSuggestions,
+  loadTopicNames,
+  parseFilters,
+  repliedIds,
+  windowStart,
+} from "@/lib/dashboard";
 
 export const dynamic = "force-dynamic";
-
-function fmtNet(n: number | null) {
-  if (n === null) return "–";
-  return n > 0 ? `+${n}` : String(n);
-}
 
 export default async function Topics({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const params = await searchParams;
@@ -18,73 +22,69 @@ export default async function Topics({ searchParams }: { searchParams: Promise<R
   const { db } = ctx;
   const account = ctx.current.account;
 
-  const list = (await loadComments(db, account.id, windowStart(filters))).filter(
-    (c) => !c.isOwned && c.analysis && (!filters.platform || c.platform === filters.platform),
+  const inWindow = (await loadComments(db, account.id, windowStart(filters))).filter(
+    (c) => !filters.platform || c.platform === filters.platform,
   );
+  const list = inWindow.filter((c) => !c.isOwned && c.analysis);
   const rows = buildTopics(list, await loadTopicNames(db, account.id));
-  const selected = rows.find((r) => r.topic === params.topic)?.topic ?? null;
+  const selected = rows.find((r) => r.topic === params.topic) ?? null;
   const inTopic = selected
     ? list
-        .filter((c) => c.analysis!.topics.includes(selected))
+        .filter((c) => c.analysis!.topics.includes(selected.topic))
         .sort((a, b) => a.analysis!.sentimentScore - b.analysis!.sentimentScore)
     : [];
+  const suggestions = await loadSuggestions(
+    db,
+    inTopic.map((c) => c.id),
+  );
+  const replied = repliedIds(inWindow);
 
   return (
-    <Frame ctx={ctx} active="topics" filters={filters}>
-      <section className="card">
-        <h2>Net Sentiment by topic</h2>
+    <Frame ctx={ctx} active="topics" filters={filters} keep={{ topic: selected?.topic ?? null }}>
+      <div className="page-head">
+        <h1>Topics</h1>
         <p className="lead">
-          Bars run left for negative and right for positive. Sorted by number of comments. Pick a topic to read its
-          comments.
+          Claude tags every comment with up to three topics. Each dot shows the share of positive comments for that
+          topic, among comments that took a side. Pick a topic to read what people said.
         </p>
-        <div className="legend">
-          <span>
-            <span className="swatch" style={{ background: "var(--positive)" }} />
-            Net positive
-          </span>
-          <span>
-            <span className="swatch" style={{ background: "var(--negative)" }} />
-            Net negative
-          </span>
-          <span style={{ marginLeft: "auto" }}>Net score · comments</span>
-        </div>
-        {rows.length === 0 && <div className="empty">No scored comments in this period.</div>}
-        {rows.map((r) => {
-          const net = r.net ?? 0;
-          const width = (Math.abs(net) / 100) * 50;
-          return (
-            <Link
-              key={r.topic}
-              className="div-row"
-              href={hrefWith("/dashboard/topics", filters, { topic: r.topic })}
-              aria-current={selected === r.topic}
-              title={`${r.topic}: Net ${fmtNet(r.net)}, ${r.total} comments, ${r.negative} negative`}
-            >
-              <span>{r.topic}</span>
-              <span className="div-track">
-                <span
-                  className="div-bar"
-                  style={{
-                    width: `${width}%`,
-                    left: net >= 0 ? "50%" : `${50 - width}%`,
-                    background: net >= 0 ? "var(--positive)" : "var(--negative)",
-                    borderRadius: net >= 0 ? "0 4px 4px 0" : "4px 0 0 4px",
-                  }}
-                />
-              </span>
-              <span className="num">{fmtNet(r.net)}</span>
-              <span className="num neg">{r.total}</span>
-            </Link>
-          );
-        })}
+      </div>
+
+      <section className="block">
+        {rows.length === 0 ? (
+          <div className="empty">No scored comments in this period.</div>
+        ) : (
+          <DotChart
+            rows={rows.map((r) => ({
+              key: r.topic,
+              label: r.topic,
+              share: r.share,
+              total: r.total,
+              posts: r.posts,
+              current: selected?.topic === r.topic,
+              href: hrefWith("/dashboard/topics", filters, { topic: r.topic }),
+            }))}
+          />
+        )}
       </section>
 
       {selected && (
-        <section className="card">
-          <h2>{selected}</h2>
-          <p className="lead">{inTopic.length} comments, most negative first.</p>
+        <section className="block" id="comments">
+          <div className="block-head">
+            <h2>{selected.topic}</h2>
+            <Link href={hrefWith("/dashboard/topics", filters)}>Close</Link>
+          </div>
+          <div className="topic-summary">
+            <VerdictChip share={selected.share} />
+            <span>
+              {selected.share === null ? "No comment took a side" : `${selected.share}% positive`} ·{" "}
+              {selected.counts.positive} positive, {selected.counts.negative} negative,{" "}
+              {selected.counts.neutral + selected.counts.mixed} neutral or mixed · {selected.total}{" "}
+              {selected.total === 1 ? "comment" : "comments"} on {selected.posts} {selected.posts === 1 ? "post" : "posts"}
+            </span>
+          </div>
+          <p className="lead">Most negative first.</p>
           {inTopic.map((c) => (
-            <CommentItem key={c.id} c={c} />
+            <CommentCard key={c.id} c={c} suggestion={suggestions.get(c.id) ?? null} replied={replied.has(c.externalId)} />
           ))}
         </section>
       )}
