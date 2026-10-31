@@ -12,6 +12,16 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+export interface BrandVoice {
+  /** Free-text description of how the business sounds. */
+  description: string;
+  tones: string[];
+  always: string;
+  never: string;
+  signOff: string;
+  length: "short" | "medium" | "detailed";
+}
+
 export const platformEnum = pgEnum("platform", ["facebook", "instagram", "linkedin", "tiktok"]);
 export const sentimentEnum = pgEnum("sentiment", ["positive", "neutral", "negative", "mixed"]);
 export const riskLevelEnum = pgEnum("risk_level", ["none", "low", "medium", "high"]);
@@ -24,6 +34,8 @@ export const accounts = pgTable("accounts", {
   name: text("name").notNull(),
   /** Extra author ids (staff, agency) whose comments count as the business's own. */
   extraOwnAuthorIds: jsonb("extra_own_author_ids").$type<string[]>().notNull().default([]),
+  /** How suggested replies should sound. Null until an owner fills it in. */
+  brandVoice: jsonb("brand_voice").$type<BrandVoice>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -152,6 +164,21 @@ export const topics = pgTable(
     sortOrder: integer("sort_order").notNull().default(0),
   },
   (t) => [uniqueIndex("topics_account_name").on(t.accountId, t.name)],
+);
+
+/** The latest suggested reply for a comment, written by Claude in the account's brand voice. */
+export const suggestedReplies = pgTable(
+  "suggested_replies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => comments.id, { onDelete: "cascade" }),
+    text: text("text").notNull(),
+    model: text("model").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("suggested_replies_comment").on(t.commentId)],
 );
 
 export type Account = typeof accounts.$inferSelect;

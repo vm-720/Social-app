@@ -2,10 +2,13 @@
 
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { accounts, connections, invites, memberships, topics } from "@/db/schema";
 import { requireContext, requireOwner } from "@/lib/auth/context";
+import { parseVoiceForm } from "@/lib/replies";
 import { syncAccount } from "@/lib/sync";
+import { parseTheme, THEME_COOKIE } from "@/lib/theme";
 
 const done = () => revalidatePath("/dashboard/settings");
 const text = (f: FormData, k: string, max: number) => String(f.get(k) ?? "").trim().slice(0, max);
@@ -118,4 +121,23 @@ export async function disconnect(f: FormData) {
     .delete(connections)
     .where(and(eq(connections.id, text(f, "id", 64)), eq(connections.accountId, current.account.id)));
   done();
+}
+
+/** Light, dark or follow the device. Kept in a cookie so the first paint already has it. */
+export async function setTheme(f: FormData) {
+  await requireContext();
+  (await cookies()).set(THEME_COOKIE, parseTheme(text(f, "theme", 10)), {
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+  revalidatePath("/", "layout");
+}
+
+export async function saveBrandVoice(f: FormData) {
+  const { db, current } = await requireOwner();
+  await db.update(accounts).set({ brandVoice: parseVoiceForm(f) }).where(eq(accounts.id, current.account.id));
+  done();
+  redirect("/dashboard/settings?voice=saved#brand-voice");
 }
